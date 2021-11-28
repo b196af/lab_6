@@ -1,0 +1,118 @@
+prob = [0.5,0.5];
+alp = [0,1];
+binary_sequence = [];
+n = 10000;
+for i = 1:n
+    binary_sequence(i) = randsrc(1,1,[alp; prob]);
+end
+M = 4;               % Modulation order
+
+digit = log2(M);
+bin_seq_10 = {};
+for i =1:length(binary_sequence)/digit;
+    binstr = "";
+    for k = digit:-1:1
+        binstr = binstr + int2str(binary_sequence(i*digit-k+1)) ;
+    end
+    bin_seq_10{i} = binstr;
+end
+
+sym_seq = symbol_mapper(binary_sequence,M,1,'PSK')
+histogram2(real(sym_seq),imag(sym_seq))
+Eb = 1/4
+ratio = [1,2,5,10,20,50,100]
+V = Eb*1./ratio ;
+sym_error = [];
+for k = 1:length(V)
+    noise = sqrt(V(k)/2)*(randn(1,n/digit) + 1i*randn(1,n/digit));
+    recieved = noise + sym_seq;
+    histogram2(real(noise),imag(noise));
+    histogram2(real(recieved),imag(recieved));
+    bin_seq = MD_symbol_demapper(recieved, 4, 1, 'PSK')
+    count = 0;
+    for j =1:length(bin_seq)/digit
+        diff = false;
+        for d = 1:digit
+            if(bin_seq((j-1)*digit+d) ~= binary_sequence((j-1)*digit+d))
+                diff = true;
+            end
+        if diff
+            count = count + 1;
+        end
+        end
+    end
+    sym_error(k) = count/n*digit;
+end
+semilogx(ratio,sym_error);
+xlabel('SNR')
+ylabel('error')
+
+
+
+
+function bin_seq = MD_symbol_demapper(sym_seq, M, d, name)
+digit = log2(M);
+    
+if name == 'QAM'
+    sym_seq = sym_seq *2/d;
+    sym_seq = conj(sym_seq);
+    result = qamdemod(sym_seq,M);
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end
+end
+if name == 'PAM'
+    sym_seq = -sym_seq *2/d
+    result = pamdemod(sym_seq,M,0,'gray')
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end
+end
+if name == 'PSK'
+    sym_seq = sym_seq *2/d;
+    result = pskdemod(sym_seq,M,0,'gray')
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end    
+end
+    
+
+end
+
+
+function sym_seq = symbol_mapper(bin_seq, M, d, name)
+digit = log2(M);
+bin_seq_10 = [];
+for i =1:length(bin_seq)/digit;
+    binstr = "";
+    for k = digit:-1:1
+        binstr = binstr + int2str(bin_seq(i*digit-k+1)) ;
+    end
+    bin_seq_10(i) = bin2dec(binstr);
+end
+    
+if name == 'QAM'
+    modSig = qammod(bin_seq_10,M);
+    sym_seq = conj(modSig);
+    sym_seq = sym_seq *d/2;
+end
+if name == 'PAM'
+    sym_seq = -pammod(bin_seq_10,M,0,'gray');
+    sym_seq = sym_seq *d/2;
+end
+if name == 'PSK'
+    sym_seq = pskmod(bin_seq_10,M,0,'gray');
+    sym_seq = sym_seq *d/2;
+end
+    
+
+end
