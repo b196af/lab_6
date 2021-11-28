@@ -1,0 +1,45 @@
+d = [0,0,0,1,1,1,1,0]
+
+sym_seq = symbol_mapper(d,M,2,'PAM')
+
+smap = [2,3,1,0,6,7,5,4,10,11,9,8,14,15,13,12]
+w = qammod(d,M,smap,'PlotConstellation',true);
+
+
+
+data = randi([0 M-1],10000,1);
+modSig = qammod(data,M);
+plot(data(1:100),'r.')
+hold on
+plot(modSig(1:100),'g.')
+
+function sym_seq = symbol_mapper(bin_seq, M, d, name)
+digit = log2(M);
+bin_seq_10 = [];
+for i =1:length(bin_seq)/digit;
+    binstr = "";
+    for k = 1:digit
+        binstr = binstr + int2str(bin_seq(i*digit-k+1)) ;
+    end
+    bin_seq_10(i) = bin2dec(binstr);
+end
+    
+if name == 'QAM'
+    %smap = [2,3,1,0,6,7,5,4,10,11,9,8,14,15,13,12]
+    %aaaa = [0:M-1];
+    modSig = qammod(bin_seq_10,M);
+    sym_seq = conj(modSig);
+    sym_seq = sym_seq *d/2;
+    %plot(modSig,'r.');
+end
+if name == 'PAM'
+    sym_seq = -pammod(bin_seq_10,M,0,'gray');
+    sym_seq = sym_seq *d/2;
+end
+if name == 'PSK'
+    sym_seq = pskmod(bin_seq_10,M,0,'gray');
+    sym_seq = sym_seq *d/2;
+end
+    
+
+end
