@@ -1,1 +1,343 @@
+%(a)
+prob = [0.5,0.5];
+alp = [0,1];
+binary_sequence = [];
+
+
+impulse_response1 = [1 0 1; 1 1 1];
+p = [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1]
+n1 = 1000;
+n = 2000;
+BER =[];
+%for pppp = 1:length(p)
+%prob1 = [p(pppp),1-p(pppp)];
+%prob0 = [1-p(pppp),p(pppp)];
+nb = [];
+for i = 1:n1
+    nb(i) = randsrc(1,1,[alp; prob]);
+end
+
+binary_sequence = conv_enc(nb, impulse_response1);
+%interfered_data = [];
+
+
+
+
+
+%*
+%n = 30000;
+%for i = 1:n
+%    binary_sequence(i) = randsrc(1,1,[alp; prob]);
+%end
+
+M = [2];% Modulation order
+color = {'r'};
+
+for m = 1:length(M) 
+digit = log2(M(m));
+bin_seq_10 = {};
+for i =1:length(binary_sequence)/digit;
+    binstr = "";
+    for k = digit:-1:1
+        binstr = binstr + int2str(binary_sequence(i*digit-k+1)) ;
+    end
+    bin_seq_10{i} = binstr;
+end
+
+sym_seq = symbol_mapper(binary_sequence,M(m),1,'PSK')
+%histogram2(real(sym_seq),imag(sym_seq))
+Eb = 0.25/(((sin(pi/M(m)))^2)*log2(M(m))) %(M(m)-1)/(6*log2(M(m)));%;% PSK, PAM ((M(m))^2-1)/(12*log2(M(m)));
+ratio = [0,2,4,6,8,10,12]
+ratio_1 = 10.^(ratio/10);
+V = Eb*1./ratio_1 ;
+theory = 2*qfunc(sqrt(2*log2(M(m))*((sin(pi/M(m)))^2)*Eb./V)) % PAM 2*qfunc(sqrt((6*log2(M(m))/((M(m))^2-1))*(Eb./V)));%QAM4*qfunc(sqrt((3*log2(M(m))/((M(m))-1))*(Eb./V))) ;%PSK 
+sym_error = [];
+for k = 1:length(V)
+    noise = sqrt(V(k)/2)*(randn(1,n/digit) + 1i*randn(1,n/digit));
+    recieved = noise + sym_seq;
+    %histogram2(real(noise),imag(noise));
+    %histogram2(real(recieved),imag(recieved));
+    bin_seq = MD_symbol_demapper(recieved, M(m), 1, 'PSK')
+    new_decoded_data = conv_dec(bin_seq, impulse_response1);
+    count = 0;
+    for j =1:length(new_decoded_data)
+        %diff = false;
+        %for d = 1:digit
+            %if(new_decoded_data((j-1)*digit+d) ~= binary_sequence((j-1)*digit+d))
+                %diff = true;
+            %end
+        if (new_decoded_data(j) ~= nb(j))
+            count = count + 1;
+        end
+        
+    end
+    sym_error(k) = count/n1;
+end
+end
+%semilogy(ratio,theory,Color = color{m},LineStyle="-");
+%hold on;
+plot(ratio,sym_error,Color = color{m},LineStyle="-");
+%plot(ratio,sym_error);
+xlabel('SNR')
+ylabel('error')
+hold on
+grid on
+
+%end
+legend('M = 2')
+title("PSK")
+
+function bin_seq = MD_symbol_demapper(sym_seq, M, d, name)
+digit = log2(M);
+    
+if name == 'QAM'
+    sym_seq = sym_seq *2/d;
+    sym_seq = conj(sym_seq);
+    result = qamdemod(sym_seq,M);
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end
+end
+if name == 'PAM'
+    sym_seq = -sym_seq *2/d
+    result = pamdemod(sym_seq,M,0,'gray')
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end
+end
+if name == 'PSK'
+    distance = sqrt(2-2*cos(2*pi/M));
+    sym_seq = sym_seq *distance/d;
+    result = pskdemod(sym_seq,M,0,'gray')
+    bin_seq_1 = dec2bin(result)
+    for k = 1:length(bin_seq_1)
+        for l = 1:digit
+            bin_seq((k-1)*digit + l) = int8(bin_seq_1(k,l))-48;
+        end
+    end    
+end
+    
+
+end
+
+
+function sym_seq = symbol_mapper(bin_seq, M, d, name)
+digit = log2(M);
+bin_seq_10 = [];
+for i =1:length(bin_seq)/digit;
+    binstr = "";
+    for k = digit:-1:1
+        binstr = binstr + int2str(bin_seq(i*digit-k+1)) ;
+    end
+    bin_seq_10(i) = bin2dec(binstr);
+end
+    
+if name == 'QAM'
+    modSig = qammod(bin_seq_10,M);
+    sym_seq = conj(modSig);
+    sym_seq = sym_seq *d/2;
+end
+if name == 'PAM'
+    sym_seq = -pammod(bin_seq_10,M,0,'gray');
+    sym_seq = sym_seq *d/2;
+end
+if name == 'PSK'
+    sym_seq = pskmod(bin_seq_10,M,0,'gray');
+    distance = sqrt(2-2*cos(2*pi/M));
+    sym_seq = sym_seq *d/distance;
+end
+    
+
+end
+
+
+
+
+
+
+
+
+
+
+%data = conv_enc(b, impulse_response1);
+%decoded_data = conv_dec(data, impulse_response1);
+function encoded_data = conv_enc(binary_data, impulse_response);
+finite_state_machine = {};
+c = 1;
+for i = 0:1
+    for j = 0:1
+        for input = 0:1
+            code = ""
+            siaaa = size(impulse_response,1)
+            for l = 1:size(impulse_response,1)
+                count = false;
+                input_str = [input,i,j];
+                for d = 1:length(impulse_response(l,:))
+                    count = xor(count, and(input_str(d),impulse_response(l,d)) );
+                end
+                char = int2str(int8(count));
+                code = code + char;
+            end
+            char1 = "";
+            char1 = char1 + int2str(input) + int2str(i) + int2str(j);
+            char2 = "";
+            char2 = char2 + int2str(input) +int2str(i);
+            finite_state_machine{c} = {char1,code,char2};
+            c = c+1;
+        end
+    end
+end
+
+now_state = "00";
+encoded_data = [];
+count = 1;
+for i = 1:length(binary_data)
+    now_state = int2str(binary_data(i)) + now_state;
+    for j =1:length(finite_state_machine)
+        haa = finite_state_machine{j}{1};
+        if haa == now_state
+            for k = 1:strlength(finite_state_machine{j}{2})
+                char = convertStringsToChars(finite_state_machine{j}{2})
+                a = char(k);
+                hhh = int8(a);
+                encoded_data(count) = int8(a)-48;
+                count = count + 1;
+            end
+            now_state = finite_state_machine{j}{3};
+        end
+    end
+end
+
+
+%encoded_data = finite_state_machine;
+end
+
+
+function decoded_data = conv_dec(binary_data, impulse_response);
+finite_state_machine = {};
+c = 1;
+for i = 0:1
+    for j = 0:1
+        for input = 0:1
+            code = ""
+            for l = 1:size(impulse_response,1)
+                count = false;
+                input_str = [input,i,j];
+                for d = 1:length(impulse_response(l,:))
+                    count = xor(count, and(input_str(d),impulse_response(l,d)) );
+                end
+                char = int2str(int8(count));
+                code = code + char;
+            end
+            char1 = "";
+            char1 = char1 + int2str(input) + int2str(i) + int2str(j);
+            char2 = "";
+            char2 = char2 + int2str(input) +int2str(i);
+            finite_state_machine{c} = {char1,code,char2};
+            c = c+1;
+        end
+    end
+end
+
+now_state = "00";
+statelist = {"00","01","10","11"}
+vertibe = {{0,0,0},{-1,-1,-1},{-1,-1,-1},{-1,-1,-1}};
+n = size(impulse_response,1);
+for i = 1:length(binary_data)/n;
+    %for input = 1:2
+        for v = 1:4
+            hamm1 = 0;
+            hamm2 = 0;
+            v1 = 0;
+            v2 = 0;
+            pre1 = -1;
+            pre2 = -1;
+            hasfind = false;
+            prestate1 = false;
+            prestate2 = false;
+            p1 = 0;
+            p2 = 0;
+            for v3 = 1:4
+                for fini = 1:length(finite_state_machine)
+                    iii = convertStringsToChars(finite_state_machine{fini}{1});
+                    paaaa = iii(2:3);
+                    prestate = 0;
+                    for ooo = 1:4
+                        if paaaa == convertStringsToChars(statelist{ooo})
+                            prestate = ooo;
+                        end
+                    end
+                    if (vertibe{i,v3}{1} ~= -1) & (finite_state_machine{fini}{3} == statelist{v}) & ~hasfind & v3 == prestate
+                        char = convertStringsToChars(finite_state_machine{fini}{2})
+                        for n1 = 1:n 
+                            a = char(n1);
+                            hhhhhh = binary_data((i-1)*n + n1);
+                            hhhhhhh = int8(a) - 48;
+                            if binary_data((i-1)*n + n1) ~= int8(a) - 48;
+                                v1= v1+1;
+                            end
+                        end
+                        hamm1 = vertibe{i,v3}{3} + v1;
+                        char = convertStringsToChars(finite_state_machine{fini}{1});
+                        pre1 = int8(char(1))-48;
+                        hasfind = true;
+                        prestate1 = true;
+                        p1 = v3;
+                    elseif (vertibe{i,v3}{1}) ~= -1 & (finite_state_machine{fini}{3} == statelist{v}) & hasfind & v3 == prestate
+                        char = convertStringsToChars(finite_state_machine{fini}{2})
+                        for n1 = 1:n 
+                            a = char(n1);
+                            if binary_data((i-1)*n + n1) ~= int8(a) -48;
+                                v2= v2+1;
+                            end
+                        end 
+                        hamm2 = vertibe{i,v3}{3} +v2;
+                        char = convertStringsToChars(finite_state_machine{fini}{1});
+                        pre2 = int8(char(1))-48;
+                        prestate2 = true;
+                        p2 = v3;
+                    end
+                end
+            end
+            if hamm2 > hamm1 & prestate1 & prestate2
+                vertibe{i+1,v} = {p1,pre1,hamm1};
+            elseif prestate1 & prestate2
+                vertibe{i+1,v} = {p2,pre2,hamm2};
+            elseif ~prestate2 & prestate1
+                vertibe{i+1,v} = {p1,pre1,hamm1};
+            elseif ~prestate2 & ~prestate1
+                vertibe{i+1,v} = {-1,-1,-1};
+            end
+        end
+    %end
+end
+
+
+min = 1000000;
+minindex = -1;
+for v = 1:4
+    if vertibe{length(vertibe),v}{3} < min
+        min = vertibe{length(vertibe),v}{3};
+        minindex = v;
+    end
+end
+now = minindex;
+decoded_data = [];
+
+for index = length(vertibe):-1:2
+    decoded_data(index-1) = vertibe{index,now}{2};
+    now = vertibe{index,now}{1};
+end
+
+
+end
+
+(b)
+
 
